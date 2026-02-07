@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cp-primary: #6366f1;
+  --color-cp-primary-hover: #4f46e5;
+  --color-cp-success: #10b981;
+  --color-cp-warning: #f59e0b;
+  --color-cp-bg: #1e1b4b;
+  --color-cp-surface: #312e81;
+  --color-cp-text: #e0e7ff;
+  --color-cp-text-muted: #a5b4fc;
+}
+
+/* FAB Button */
+.cp-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--color-cp-primary);
+  color: white;
+  border: none;
+  border-radius: 28px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  transition: all 0.2s ease;
+}
+
+.cp-fab:hover {
+  background: var(--color-cp-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+}
+
+.cp-fab-icon {
+  font-size: 18px;
+}
+
+/* Selection Popup */
+.cp-selection-popup {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--color-cp-bg);
+  border: 1px solid var(--color-cp-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: cp-fade-in 0.15s ease;
+}
+
+.cp-selection-btn {
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--color-cp-text);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s ease;
+}
+
+.cp-selection-btn:hover {
+  background: var(--color-cp-surface);
+}
+
+/* Mastery Badge */
+.cp-mastery-badge {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 2147483646;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-cp-bg);
+  border: 1px solid var(--color-cp-success);
+  border-radius: 20px;
+  color: var(--color-cp-success);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@keyframes cp-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

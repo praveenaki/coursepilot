@@ -31,23 +31,26 @@ Content Script (per tab)  ↔  Background Worker  ↔  Side Panel (React app)
 
 4 pluggable providers, all implementing the same `AIProvider` interface with `AsyncGenerator<string>` streaming:
 
-| Provider | Endpoint | Auth |
-|---|---|---|
-| Anthropic | `api.anthropic.com/v1/messages` | `x-api-key` header |
-| OpenAI | `api.openai.com/v1/chat/completions` | Bearer token |
-| Gemini | `generativelanguage.googleapis.com/v1beta/...` | API key param |
-| Local Gateway | `localhost:PORT/v1/chat/completions` | Bearer token |
+| Provider | Endpoint | Auth | Default Model |
+|---|---|---|---|
+| Anthropic | `api.anthropic.com/v1/messages` | `x-api-key` header | `claude-sonnet-4-5-20250929` |
+| OpenAI | `api.openai.com/v1/chat/completions` | Bearer token | `gpt-4o` |
+| Gemini | `generativelanguage.googleapis.com/v1beta/...` | API key param | `gemini-3-flash-preview` |
+| Local Gateway | `localhost:PORT/v1/chat/completions` | Bearer token | `default` |
 
 ### State Management
 
 All state in WXT storage (never in-memory):
-- `sync:settings` — user preferences, synced across devices
-- `local:apiKeys` — API keys, never synced
-- `local:courses` — detected course structures
-- `local:progress` — mastery per page per course
-- `local:contextCache` — extracted page content
-- `local:chatHistory` — listen mode conversations
-- `local:quizHistory` — past quiz sessions
+
+| Storage Key | Type | Description |
+|---|---|---|
+| `sync:settings` | `Settings` | User preferences, synced across devices |
+| `local:apiKeys` | `Record<AIProviderType, string>` | API keys, never synced |
+| `local:courses` | `Record<string, CourseInfo>` | Detected course structures |
+| `local:progress` | `Record<string, CourseProgress>` | Mastery per page per course |
+| `local:contextCache` | `Record<string, PageContext>` | Extracted page content |
+| `local:chatHistory` | `Record<string, ChatSession>` | Listen mode conversations |
+| `local:quizHistory` | `QuizSession[]` | Past quiz sessions |
 
 ## Core Rules
 
@@ -83,44 +86,116 @@ Total budget: 100K tokens
 └── Reserve:           ~8K  (AI response)
 ```
 
+## Message Protocol
+
+All communication flows through background. See [`lib/messaging.ts`](lib/messaging.ts) for complete types.
+
+### Content → Background Messages
+
+```typescript
+{ type: 'PAGE_CONTENT_EXTRACTED', payload: { url, title, content } }
+{ type: 'COURSE_DETECTED', payload: CourseInfo }
+{ type: 'SCROLL_PROGRESS', payload: { url, progress } }
+{ type: 'TEXT_SELECTED', payload: { text, url } }
+{ type: 'QUIZ_REQUESTED', payload: { url } }
+{ type: 'NAVIGATE_NEXT', payload: { currentUrl } }
+```
+
+### Panel → Background Messages
+
+```typescript
+{ type: 'GENERATE_QUIZ', payload: { url, bloomLevels? } }
+{ type: 'EVALUATE_ANSWER', payload: { question, answer, pageContent } }
+{ type: 'EXPLAIN_TEXT', payload: { text, pageUrl } }
+{ type: 'CHAT_MESSAGE', payload: { message, pageUrl, scrollProgress } }
+{ type: 'GET_PAGE_PROGRESS', payload: { url } }
+{ type: 'GET_COURSE_PROGRESS', payload: { courseId } }
+{ type: 'GET_SETTINGS' }
+{ type: 'UPDATE_SETTINGS', payload: Partial<Settings> }
+{ type: 'SET_API_KEY', payload: { provider, key } }
+{ type: 'VALIDATE_PROVIDER', payload: { provider } }
+```
+
 ## Project Structure
 
 ```
 coursepilot/
 ├── entrypoints/
 │   ├── background.ts           # AI proxy + message router
-│   ├── content/                # Content script (ShadowRoot React UI)
-│   │   ├── index.tsx           # defineContentScript + createShadowRootUi
-│   │   ├── App.tsx             # FAB, SelectionPopup, scroll tracking
-│   │   └── style.css           # Isolated styles (Tailwind v4)
-│   └── sidepanel/              # Side panel React app
+│   ├── content/               # Content script (ShadowRoot React UI)
+│   │   ├── index.tsx         # defineContentScript + createShadowRootUi
+│   │   ├── App.tsx           # FAB, SelectionPopup, scroll tracking
+│   │   └── style.css          # Isolated styles (Tailwind v4)
+│   └── sidepanel/             # Side panel React app
 │       ├── index.html
 │       ├── main.tsx
-│       ├── App.tsx             # Tab router: Quiz | Chat | Progress | Settings
-│       └── views/              # QuizView, ChatView, ProgressView, SettingsView
+│       ├── App.tsx            # Tab router: Quiz | Chat | Progress | Settings
+│       └── views/
+│           ├── QuizView.tsx   # Quiz generation & answering
+│           ├── ChatView.tsx   # Listen mode chat
+│           ├── ProgressView.tsx
+│           └── SettingsView.tsx
 ├── lib/
 │   ├── ai/
-│   │   ├── types.ts            # AIProvider interface
+│   │   ├── types.ts           # AIProvider interface
 │   │   ├── anthropic-provider.ts
 │   │   ├── openai-provider.ts
 │   │   ├── gemini-provider.ts
 │   │   ├── gateway-provider.ts
 │   │   ├── provider-factory.ts
-│   │   └── prompts/            # Quiz generation, answer eval, explanation
+│   │   └── prompts/
+│   │       ├── quiz-generation.ts
+│   │       └── explanation.ts
 │   ├── context/
-│   │   ├── page-extractor.ts   # DOM → clean text
-│   │   └── llms-txt-loader.ts  # Fetch /llms.txt
+│   │   ├── page-extractor.ts  # DOM → clean text
+│   │   └── llms-txt-loader.ts # Fetch /llms.txt
 │   ├── navigation/
-│   │   └── course-detector.ts  # Docsify, GitBook, generic detection
-│   ├── messaging.ts            # Type-safe message protocol
-│   └── types.ts                # All shared TypeScript types
+│   │   └── course-detector.ts # Docsify, GitBook, generic detection
+│   ├── messaging.ts           # Type-safe message protocol
+│   └── types.ts               # All shared TypeScript types
 ├── hooks/
-│   └── useAIStream.ts          # Port-based streaming hook
+│   └── useAIStream.ts        # Port-based streaming hook
 ├── utils/
-│   ├── storage.ts              # WXT storage definitions
-│   └── streaming.ts            # SSE/NDJSON parsing
+│   ├── storage.ts             # WXT storage definitions
+│   └── streaming.ts           # SSE/NDJSON parsing
+├── docs/
+│   ├── dev/                   # Developer documentation
+│   │   ├── architecture.md
+│   │   ├── contributing.md
+│   │   └── api-reference.md
+│   └── user/                   # User documentation
+│       ├── getting-started.md
+│       └── faq-tips.md
 ├── wxt.config.ts
 └── package.json
+```
+
+## Key Patterns
+
+### Creating a New AI Provider
+
+1. Create `lib/ai/new-provider.ts` implementing `AIProvider` interface
+2. Add to [`provider-factory.ts`](lib/ai/provider-factory.ts)
+3. Update `AIProviderType` in [`lib/types.ts`](lib/types.ts)
+
+### Adding a New Message Type
+
+1. Define in [`lib/messaging.ts`](lib/messaging.ts) union types
+2. Handle in [`entrypoints/background.ts`](entrypoints/background.ts) switch statement
+
+### Using Storage
+
+```typescript
+import { settingsStorage } from '@/utils/storage';
+
+// Reading
+const settings = await settingsStorage.getValue();
+
+// Writing
+await settingsStorage.setValue({ theme: 'dark' });
+
+// Watching
+settingsStorage.watch((newValue) => { /* ... */ });
 ```
 
 ## Conventions
@@ -130,6 +205,40 @@ coursepilot/
 - **Messages**: All typed via `lib/messaging.ts` union types
 - **Storage**: Always through `utils/storage.ts` items, never raw `chrome.storage`
 
+## Common Tasks
+
+### Add a New Side Panel View
+
+1. Create `entrypoints/sidepanel/views/MyView.tsx`
+2. Import in [`sidepanel/App.tsx`](entrypoints/sidepanel/App.tsx)
+3. Add to tab definitions and content area
+
+### Add Storage Key
+
+1. Define in [`utils/storage.ts`](utils/storage.ts) using `storage.defineItem<T>()`
+2. Import and use throughout the codebase
+
+### Add Prompt Template
+
+1. Create function in [`lib/ai/prompts/`](lib/ai/prompts/)
+2. Use in [`entrypoints/background.ts`](entrypoints/background.ts) message handlers
+
 ## Test Subject
 
 The CCLI Monitor Docsify course at `../activity-monitor-for-ai-assitants/course/` is the primary test subject. An `llms.txt` has been created at the course root.
+
+Run with:
+```bash
+cd ../activity-monitor-for-ai-assitants/course
+npx docsify-cli serve . --port 4000
+```
+
+## Useful Commands
+
+```bash
+npm run dev              # Chrome with hot reload
+npm run dev:firefox     # Firefox variant
+npm run build           # Production build
+npm run check           # TypeScript check
+npm run lint            # ESLint
+```

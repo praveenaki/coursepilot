@@ -237,6 +237,60 @@ No other project has **Bloom's Taxonomy-based cognitive performance breakdowns**
 4. Click **Test Connection** to verify both APIs
 5. Take some quizzes, then go to **Progress** → **Export Learning Portfolio**
 
+## 🔍 You.com Web Research Integration
+
+CoursePilot uses **four You.com APIs** to transform the learning experience from isolated course content into web-grounded, citation-backed knowledge.
+
+### The Problem
+
+Students reading online courses often hit concepts they want to explore beyond the course material — but switching to Google, reading articles, and coming back breaks the learning flow. Meanwhile, AI tutors can explain concepts but without citing real sources, so students can't verify or go deeper.
+
+### How You.com Solves This
+
+You.com acts as a **research enhancement layer** on top of CoursePilot's existing AI tutoring. It's not a 5th AI provider — it enriches every learning interaction with live web data and verifiable citations.
+
+```
+Student selects text → "Research" button → You.com APIs fire in parallel:
+                                            ├── Search API → Web sources with snippets
+                                            ├── Express Agent → AI explanation with inline citations
+                                            └── News API → Current events related to the concept
+                                            ↓
+                                    Research tab shows unified results
+```
+
+### You.com APIs Used
+
+| API | Endpoint | Purpose in CoursePilot |
+|-----|----------|------------------------|
+| **Search API** | `GET /v1/search` | Finds relevant web sources for any topic being studied. Results include titles, snippets, and URLs displayed as clickable source cards |
+| **Express Agent** | `POST /v1/agents/runs` | Generates a complete AI explanation grounded in live search results with inline citation numbers — search + answer in one call |
+| **News API** | `GET /livenews` | Surfaces current events related to course concepts, keeping learning connected to the real world |
+| **Contents API** | `POST /v1/contents` | Extracts clean markdown from linked resources for deeper enrichment |
+
+### Three Integration Points
+
+1. **Research Tab** (primary) — A dedicated tab in the side panel for deep topic research. Enter any query and get an AI explanation backed by numbered citations, clickable web source cards, and related news articles. All three APIs run in parallel via `Promise.allSettled` so one slow API doesn't block the others.
+
+2. **"Research" Button on Text Selection** — When you select text on a course page, a "🔍 Research" button appears alongside "💡 Explain." Clicking it opens the Research tab pre-filled with your selection and auto-triggers the research pipeline.
+
+3. **Web-Grounded Chat** — In Listen Mode chat, a "🔍 Search web" toggle enriches your next question with You.com Search results. The AI's response includes a Sources section with clickable citation links — so you can verify every claim.
+
+### What Makes This Unique
+
+- **Citation-backed learning**: Every research result links to real, verifiable web sources — not just AI-generated text
+- **Parallel API orchestration**: Search + Express Agent + News fire simultaneously, with graceful degradation if any one fails
+- **Context-aware research**: Research queries are enriched with the current course page title for more relevant results
+- **Per-message web toggle**: Chat web grounding is opt-in per message, not always-on, giving students control over cost and relevance
+- **No workflow disruption**: Research happens inside the extension — students never leave their course page
+
+### Setup
+
+1. Get a free API key at [you.com/platform/api-keys](https://you.com/platform/api-keys) ($100 in free credits, no credit card required)
+2. Open **Settings** in the CoursePilot side panel
+3. Scroll to **Web Research** and enter your API key
+4. Click **Test** to verify the connection
+5. Switch to the **Research** tab and start exploring topics
+
 ## 🛠 Built With
 
 | Technology | Purpose |

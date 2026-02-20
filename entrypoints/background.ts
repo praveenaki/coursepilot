@@ -15,7 +15,10 @@ import {
   pendingExplanationStorage,
   progressStorage,
   settingsStorage,
+  foxitCredentialsStorage,
 } from '@/utils/storage';
+import { exportLearningPortfolio } from '@/lib/foxit/export-orchestrator';
+import { FoxitDocGenClient, FoxitPdfServicesClient } from '@/lib/foxit/foxit-client';
 import { DEFAULT_MODELS } from '@/lib/ai/types';
 import { buildQuizGenerationPrompt, buildAnswerEvaluationPrompt } from '@/lib/ai/prompts/quiz-generation';
 import { buildExplanationPrompt, buildListenModePrompt } from '@/lib/ai/prompts/explanation';
@@ -268,6 +271,52 @@ export default defineBackground(() => {
         } catch (error) {
           return {
             provider: providerType,
+            valid: false,
+            error: error instanceof Error ? error.message : 'Validation failed',
+          };
+        }
+      }
+
+      // ── Foxit Export Messages ────────────────────────
+
+      case 'EXPORT_PORTFOLIO': {
+        const { courseId } = message.payload;
+        // Fire-and-forget — progress tracked via exportStatusStorage
+        exportLearningPortfolio(courseId)
+          .then(({ pdfBase64, fileName }) => {
+            // Convert base64 to data URL and trigger download
+            const dataUrl = `data:application/pdf;base64,${pdfBase64}`;
+            browser.downloads.download({
+              url: dataUrl,
+              filename: fileName,
+              saveAs: true,
+            });
+          })
+          .catch((error) => {
+            console.error('[CoursePilot] Export failed:', error);
+          });
+        return { ok: true };
+      }
+
+      case 'SET_FOXIT_CREDENTIALS': {
+        await foxitCredentialsStorage.setValue(message.payload);
+        return { ok: true };
+      }
+
+      case 'VALIDATE_FOXIT': {
+        try {
+          const creds = await foxitCredentialsStorage.getValue();
+          const [docGenValid, pdfValid] = await Promise.all([
+            new FoxitDocGenClient(creds.docGen).validate(),
+            new FoxitPdfServicesClient(creds.pdfServices).validate(),
+          ]);
+          return {
+            valid: docGenValid && pdfValid,
+            docGen: docGenValid,
+            pdfServices: pdfValid,
+          };
+        } catch (error) {
+          return {
             valid: false,
             error: error instanceof Error ? error.message : 'Validation failed',
           };

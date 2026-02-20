@@ -8,6 +8,7 @@ import type {
   QuizSession,
   Settings,
 } from './types';
+import type { FoxitCredentials } from './foxit/types';
 
 // ─── Message Protocol ─────────────────────────────────────
 // Content Script ↔ Background ↔ Side Panel
@@ -35,7 +36,10 @@ export type PanelToBackgroundMessage =
   | { type: 'GET_SETTINGS' }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<Settings> }
   | { type: 'SET_API_KEY'; payload: { provider: AIProviderType; key: string } }
-  | { type: 'VALIDATE_PROVIDER'; payload: { provider: AIProviderType } };
+  | { type: 'VALIDATE_PROVIDER'; payload: { provider: AIProviderType } }
+  | { type: 'EXPORT_PORTFOLIO'; payload: { courseId: string } }
+  | { type: 'SET_FOXIT_CREDENTIALS'; payload: FoxitCredentials }
+  | { type: 'VALIDATE_FOXIT' };
 
 // Messages FROM background TO content script
 export type BackgroundToContentMessage =

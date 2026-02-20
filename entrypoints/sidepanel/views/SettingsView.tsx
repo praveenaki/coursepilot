@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { sendToBackground } from '@/lib/messaging';
 import type { AIProviderType, Settings } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
+import type { FoxitCredentials } from '@/lib/foxit/types';
+import { DEFAULT_FOXIT_CREDENTIALS } from '@/lib/foxit/types';
 
 const PROVIDERS: { id: AIProviderType; name: string; description: string }[] = [
   { id: 'anthropic', name: 'Anthropic (Claude)', description: 'Claude Sonnet 4.5 — best for education' },
@@ -23,6 +25,16 @@ export default function SettingsView() {
   const [validationResult, setValidationResult] = useState<{
     provider: AIProviderType;
     valid: boolean;
+    error?: string;
+  } | null>(null);
+
+  // Foxit state
+  const [foxitCreds, setFoxitCreds] = useState<FoxitCredentials>(DEFAULT_FOXIT_CREDENTIALS);
+  const [foxitValidating, setFoxitValidating] = useState(false);
+  const [foxitValidationResult, setFoxitValidationResult] = useState<{
+    valid: boolean;
+    docGen?: boolean;
+    pdfServices?: boolean;
     error?: string;
   } | null>(null);
 
@@ -66,6 +78,35 @@ export default function SettingsView() {
     },
     [],
   );
+
+  const handleFoxitCredChange = useCallback(
+    async (
+      api: 'docGen' | 'pdfServices',
+      field: 'clientId' | 'clientSecret',
+      value: string,
+    ) => {
+      const updated = {
+        ...foxitCreds,
+        [api]: { ...foxitCreds[api], [field]: value },
+      };
+      setFoxitCreds(updated);
+      await sendToBackground({ type: 'SET_FOXIT_CREDENTIALS', payload: updated });
+    },
+    [foxitCreds],
+  );
+
+  const handleFoxitValidate = useCallback(async () => {
+    setFoxitValidating(true);
+    setFoxitValidationResult(null);
+    const result = (await sendToBackground({ type: 'VALIDATE_FOXIT' })) as {
+      valid: boolean;
+      docGen?: boolean;
+      pdfServices?: boolean;
+      error?: string;
+    };
+    setFoxitValidationResult(result);
+    setFoxitValidating(false);
+  }, []);
 
   return (
     <div style={{ padding: '16px' }}>
@@ -179,6 +220,134 @@ export default function SettingsView() {
                 fontFamily: 'monospace',
               }}
             />
+          </div>
+        )}
+      </section>
+
+      {/* Foxit PDF Services */}
+      <section style={{ marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+          Foxit PDF Services
+        </h3>
+        <p style={{ fontSize: '11px', color: 'var(--color-cp-text-muted)', marginBottom: '12px' }}>
+          Enable PDF portfolio export with Foxit APIs
+        </p>
+
+        {/* Doc Gen credentials */}
+        <label style={{ fontSize: '12px', color: 'var(--color-cp-text-muted)', display: 'block', marginBottom: '4px' }}>
+          Document Generation — Client ID
+        </label>
+        <input
+          type="password"
+          value={foxitCreds.docGen.clientId}
+          onChange={(e) => handleFoxitCredChange('docGen', 'clientId', e.target.value)}
+          placeholder="foxit_..."
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'var(--color-cp-surface)',
+            color: 'var(--color-cp-text)',
+            border: '1px solid var(--color-cp-border)',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}
+        />
+
+        <label style={{ fontSize: '12px', color: 'var(--color-cp-text-muted)', display: 'block', marginBottom: '4px' }}>
+          Document Generation — Client Secret
+        </label>
+        <input
+          type="password"
+          value={foxitCreds.docGen.clientSecret}
+          onChange={(e) => handleFoxitCredChange('docGen', 'clientSecret', e.target.value)}
+          placeholder="Enter client secret..."
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'var(--color-cp-surface)',
+            color: 'var(--color-cp-text)',
+            border: '1px solid var(--color-cp-border)',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            marginBottom: '12px',
+          }}
+        />
+
+        {/* PDF Services credentials */}
+        <label style={{ fontSize: '12px', color: 'var(--color-cp-text-muted)', display: 'block', marginBottom: '4px' }}>
+          PDF Services — Client ID
+        </label>
+        <input
+          type="password"
+          value={foxitCreds.pdfServices.clientId}
+          onChange={(e) => handleFoxitCredChange('pdfServices', 'clientId', e.target.value)}
+          placeholder="foxit_..."
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'var(--color-cp-surface)',
+            color: 'var(--color-cp-text)',
+            border: '1px solid var(--color-cp-border)',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}
+        />
+
+        <label style={{ fontSize: '12px', color: 'var(--color-cp-text-muted)', display: 'block', marginBottom: '4px' }}>
+          PDF Services — Client Secret
+        </label>
+        <input
+          type="password"
+          value={foxitCreds.pdfServices.clientSecret}
+          onChange={(e) => handleFoxitCredChange('pdfServices', 'clientSecret', e.target.value)}
+          placeholder="Enter client secret..."
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            background: 'var(--color-cp-surface)',
+            color: 'var(--color-cp-text)',
+            border: '1px solid var(--color-cp-border)',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontFamily: 'monospace',
+            marginBottom: '8px',
+          }}
+        />
+
+        <button
+          onClick={handleFoxitValidate}
+          disabled={foxitValidating}
+          style={{
+            padding: '8px 16px',
+            background: 'var(--color-cp-surface)',
+            color: 'var(--color-cp-text)',
+            border: '1px solid var(--color-cp-border)',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 500,
+          }}
+        >
+          {foxitValidating ? 'Testing...' : 'Test Connection'}
+        </button>
+
+        {foxitValidationResult && (
+          <div style={{ marginTop: '6px', fontSize: '12px' }}>
+            {foxitValidationResult.valid ? (
+              <span style={{ color: 'var(--color-cp-success)' }}>
+                Both APIs connected successfully
+              </span>
+            ) : (
+              <span style={{ color: 'var(--color-cp-danger)' }}>
+                {foxitValidationResult.error ??
+                  `Doc Gen: ${foxitValidationResult.docGen ? 'OK' : 'Failed'} · PDF Services: ${foxitValidationResult.pdfServices ? 'OK' : 'Failed'}`}
+              </span>
+            )}
           </div>
         )}
       </section>

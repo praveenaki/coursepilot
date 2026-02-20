@@ -9,6 +9,8 @@ import type {
   Settings,
 } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
+import type { ExportStatus, FoxitCredentials } from '@/lib/foxit/types';
+import { DEFAULT_FOXIT_CREDENTIALS } from '@/lib/foxit/types';
 
 // ─── Synced Storage (across devices) ──────────────────────
 
@@ -73,3 +75,17 @@ export const pendingExplanationStorage = storage.defineItem<{
   pageUrl: string;
   timestamp: number;
 } | null>('local:pendingExplanation', { defaultValue: null });
+
+// ─── Foxit PDF Export ────────────────────────────────────
+
+// Foxit API credentials (Doc Gen + PDF Services, separate keys)
+export const foxitCredentialsStorage = storage.defineItem<FoxitCredentials>(
+  'local:foxitCredentials',
+  { defaultValue: DEFAULT_FOXIT_CREDENTIALS },
+);
+
+// Export pipeline status (watched by ExportButton for progress)
+export const exportStatusStorage = storage.defineItem<ExportStatus>(
+  'local:exportStatus',
+  { defaultValue: { step: 'idle' } },
+);

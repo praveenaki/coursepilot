@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sendToBackground } from '@/lib/messaging';
 import type { CourseProgress, PageProgress } from '@/lib/types';
+import ExportButton from '../components/ExportButton';
 
 export default function ProgressView() {
   const [progress, setProgress] = useState<CourseProgress | null>(null);
@@ -94,6 +95,9 @@ export default function ProgressView() {
           <PageProgressCard key={page.url} page={page} />
         ))}
       </div>
+
+      {/* Export Button */}
+      <ExportButton courseId={progress.courseId} />
     </div>
   );
 }

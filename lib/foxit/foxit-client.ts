@@ -142,12 +142,13 @@ export class FoxitPdfServicesClient {
     }
 
     const result = await response.json();
+    console.log('[CoursePilot] Combine response:', JSON.stringify(result));
     return result.taskId;
   }
 
   async compress(
     documentId: string,
-    compressionLevel: string = 'medium',
+    compressionLevel: string = 'MEDIUM',
   ): Promise<string> {
     const response = await fetch(
       `${BASE_URL}/pdf-services/api/documents/modify/pdf-compress`,
@@ -188,13 +189,20 @@ export class FoxitPdfServicesClient {
       }
 
       const result = await response.json();
+      const status = (result.status || '').toLowerCase();
+      console.log('[CoursePilot] Poll task', taskId, '→ status:', result.status, 'full:', JSON.stringify(result));
 
-      if (result.status === 'completed' || result.status === 'success') {
-        return result.resultDocumentId;
+      if (status === 'completed' || status === 'success' || status === 'done') {
+        // Result document ID can be in different fields
+        const docId = result.resultDocumentId || result.result_document_id || result.documentId || result.output?.documentId;
+        if (!docId) {
+          throw new Error(`Task completed but no document ID found in: ${JSON.stringify(result)}`);
+        }
+        return docId;
       }
 
-      if (result.status === 'failed' || result.status === 'error') {
-        throw new Error(`Task failed: ${result.error || 'Unknown error'}`);
+      if (status === 'failed' || status === 'error') {
+        throw new Error(`Task failed: ${result.error || result.message || JSON.stringify(result)}`);
       }
 
       // Exponential backoff: 1s → 1.5s → 2.25s → ... → 10s cap

@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { useAIStream } from '@/hooks/useAIStream';
 import { sendToBackground } from '@/lib/messaging';
 import type { QuizQuestion, QuizAttempt, QuizSession, CourseProgress, PageProgress } from '@/lib/types';
-import { quizHistoryStorage, progressStorage, coursesStorage, settingsStorage } from '@/utils/storage';
+import { quizHistoryStorage, progressStorage, coursesStorage, settingsStorage, contextCacheStorage } from '@/utils/storage';
 
 type QuizState = 'idle' | 'generating' | 'answering' | 'feedback' | 'complete';
 
@@ -162,11 +162,57 @@ export default function QuizView() {
       ? Math.round(attemptsRef.current.reduce((s, a) => s + a.score, 0) / questions.length)
       : 0;
 
-    // Find courseId from detected courses
+    // Find courseId from detected courses, or create one from URL + page title
     const allCourses = await coursesStorage.getValue();
-    const courseId = Object.values(allCourses).find((c) => {
+    const matchedCourse = Object.values(allCourses).find((c) => {
       try { return quizPageUrl.current.startsWith(c.baseUrl); } catch { return false; }
-    })?.id ?? 'unknown';
+    });
+
+    let courseId: string;
+    if (matchedCourse) {
+      courseId = matchedCourse.id;
+    } else {
+      // No detected course — derive courseId from URL origin
+      let origin = 'unknown';
+      try {
+        const url = new URL(quizPageUrl.current);
+        origin = `${url.hostname}${url.port ? '-' + url.port : ''}`;
+      } catch { /* use 'unknown' */ }
+      courseId = `course-${origin}`;
+
+      // Resolve course name from contextCacheStorage page title
+      const contextCache = await contextCacheStorage.getValue();
+      const pageCtx = contextCache[quizPageUrl.current];
+      let courseName = pageCtx?.title || '';
+
+      // Docsify sets document.title to page heading — use it as course name
+      // If title has a separator ("Page - Course"), take the last segment
+      if (courseName) {
+        const separators = [' - ', ' | ', ' — ', ' · '];
+        for (const sep of separators) {
+          if (courseName.includes(sep)) {
+            courseName = courseName.split(sep).pop()!.trim();
+            break;
+          }
+        }
+      }
+      if (!courseName) {
+        try { courseName = new URL(quizPageUrl.current).hostname; } catch { courseName = 'My Course'; }
+      }
+
+      // Create and persist a minimal course entry
+      const newCourse: import('@/lib/types').CourseInfo = {
+        id: courseId,
+        title: courseName,
+        baseUrl: (() => { try { return new URL(quizPageUrl.current).origin; } catch { return quizPageUrl.current; } })(),
+        platform: 'generic',
+        pages: [],
+        detectedAt: Date.now(),
+      };
+      allCourses[courseId] = newCourse;
+      await coursesStorage.setValue(allCourses);
+      console.log('[CoursePilot] Created course entry:', courseId, '→', courseName);
+    }
 
     const settings = await settingsStorage.getValue();
     const passed = avgScore >= settings.masteryThreshold;

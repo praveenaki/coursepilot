@@ -30,6 +30,50 @@ function formatDate(date: Date): string {
   });
 }
 
+/**
+ * Resolves the course name with a fallback chain:
+ * 1. coursesStorage title
+ * 2. contextCacheStorage page titles (extract from separator patterns)
+ * 3. URL hostname
+ */
+async function resolveCourseName(
+  courseId: string,
+  courses: Record<string, import('@/lib/types').CourseInfo>,
+  pageUrls: string[],
+): Promise<string> {
+  // 1. From detected/saved course
+  if (courses[courseId]?.title && courses[courseId].title !== courseId) {
+    return courses[courseId].title;
+  }
+
+  // 2. From context cache — check page titles
+  const contextCache = await contextCacheStorage.getValue();
+  for (const url of pageUrls) {
+    const cached = contextCache[url];
+    if (cached?.title) {
+      // Try to extract course name from "Page - Course" pattern
+      const separators = [' - ', ' | ', ' — ', ' · '];
+      for (const sep of separators) {
+        if (cached.title.includes(sep)) {
+          return cached.title.split(sep).pop()!.trim();
+        }
+      }
+      // Use the full title (likely the course/page name from document.title)
+      return cached.title;
+    }
+  }
+
+  // 3. From URL hostname
+  if (pageUrls.length > 0) {
+    try {
+      const url = new URL(pageUrls[0]);
+      return url.hostname === 'localhost' ? `Course on ${url.host}` : url.hostname;
+    } catch { /* fall through */ }
+  }
+
+  return courseId;
+}
+
 // ─── Certificate Data ────────────────────────────────────
 
 export async function aggregateCertificateData(
@@ -59,8 +103,11 @@ export async function aggregateCertificateData(
     ? Object.values(courseProgress.pageProgress)
     : [];
 
+  const pageUrls = pages.map((p) => p.url);
+  const courseName = await resolveCourseName(courseId, courses, pageUrls);
+
   return {
-    courseName: course?.title ?? courseId,
+    courseName,
     overallMastery: `${courseProgress?.overallMastery ?? 0}%`,
     completionDate: formatDate(new Date()),
     bloomLevelsAchieved:
@@ -195,8 +242,11 @@ export async function aggregateStudyReportData(
     }
   }
 
+  const reportPageUrls = pages.map((p) => p.url);
+  const reportCourseName = await resolveCourseName(courseId, courses, reportPageUrls);
+
   return {
-    courseName: course?.title ?? courseId,
+    courseName: reportCourseName,
     overallMastery: `${courseProgress?.overallMastery ?? 0}%`,
     totalPages: String(pages.length),
     pagesMastered: String(mastered.length),

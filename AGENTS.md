@@ -10,15 +10,17 @@ CoursePilot is an AI-powered Chrome extension that turns any online text-based c
 Content Script (per tab)  ↔  Background Worker  ↔  Side Panel (React app)
       ↕                          ↕
   Host page DOM              AI Provider (pluggable)
+                                 ↕
+                             You.com APIs (research enhancement)
 ```
 
 ### Three Entrypoints
 
 | Entrypoint | Purpose | Key Files |
 |---|---|---|
-| **Content Script** | Injects FAB, selection popup, extracts page content | `entrypoints/content/` |
+| **Content Script** | Injects FAB, selection popup (Explain + Research), extracts page content | `entrypoints/content/` |
 | **Background Worker** | AI proxy, message router, storage coordinator | `entrypoints/background.ts` |
-| **Side Panel** | Quiz UI, chat, progress tracking, settings | `entrypoints/sidepanel/` |
+| **Side Panel** | Quiz UI, chat, research, progress tracking, settings | `entrypoints/sidepanel/` |
 
 ### Communication Pattern
 
@@ -38,6 +40,28 @@ Content Script (per tab)  ↔  Background Worker  ↔  Side Panel (React app)
 | Gemini | `generativelanguage.googleapis.com/v1beta/...` | API key param | `gemini-3-flash-preview` |
 | Local Gateway | `localhost:PORT/v1/chat/completions` | Bearer token | `default` |
 
+### You.com Research System
+
+You.com is NOT an AI provider — it's a **research enhancement layer** that enriches learning interactions with web-grounded, citation-backed data. It uses 4 APIs with two different auth methods:
+
+| API | Endpoint | Auth | Purpose |
+|-----|----------|------|---------|
+| Search | `GET https://ydc-index.io/v1/search` | `X-API-Key` header | Web sources with snippets |
+| News | `GET https://api.ydc-index.io/livenews` | `X-API-Key` header | Current events for topics |
+| Contents | `POST https://ydc-index.io/v1/contents` | `X-API-Key` header | Clean markdown extraction from URLs |
+| Express Agent | `POST https://api.you.com/v1/agents/runs` | `Authorization: Bearer` | AI explanation with inline citations |
+
+**Key files:**
+- `lib/youcom/youcom-client.ts` — HTTP client for all 4 APIs
+- `lib/youcom/research-service.ts` — Orchestrates parallel API calls via `Promise.allSettled`
+
+**Integration points:**
+1. **Research tab** (`ResearchView.tsx`) — Dedicated topic research with sources, citations, news
+2. **Content script** — "Research" button in text selection popup, stores to `pendingResearchStorage`
+3. **Chat web grounding** (`ChatView.tsx`) — Per-message "Search web" toggle injects sources into AI prompt
+
+**Important:** Search-family APIs (`ydc-index.io`) use `X-API-Key` header. Agent APIs (`api.you.com`) use `Authorization: Bearer`. The `YouComClient` handles both.
+
 ### State Management
 
 All state in WXT storage (never in-memory):
@@ -51,6 +75,8 @@ All state in WXT storage (never in-memory):
 | `local:contextCache` | `Record<string, PageContext>` | Extracted page content |
 | `local:chatHistory` | `Record<string, ChatSession>` | Listen mode conversations |
 | `local:quizHistory` | `QuizSession[]` | Past quiz sessions |
+| `local:youcomApiKey` | `string` | You.com API key (separate from AI providers) |
+| `local:pendingResearch` | `{ text, pageUrl, timestamp } \| null` | Pending research request from content script |
 
 ## Core Rules
 
@@ -114,6 +140,11 @@ All communication flows through background. See [`lib/messaging.ts`](lib/messagi
 { type: 'UPDATE_SETTINGS', payload: Partial<Settings> }
 { type: 'SET_API_KEY', payload: { provider, key } }
 { type: 'VALIDATE_PROVIDER', payload: { provider } }
+{ type: 'RESEARCH_TOPIC', payload: { topic, pageUrl? } }
+{ type: 'SEARCH_WEB', payload: { query } }
+{ type: 'GET_NEWS', payload: { query } }
+{ type: 'SET_YOUCOM_KEY', payload: { key } }
+{ type: 'VALIDATE_YOUCOM' }
 ```
 
 ## Project Structure
@@ -129,10 +160,11 @@ coursepilot/
 │   └── sidepanel/             # Side panel React app
 │       ├── index.html
 │       ├── main.tsx
-│       ├── App.tsx            # Tab router: Quiz | Chat | Progress | Settings
+│       ├── App.tsx            # Tab router: Quiz | Chat | Research | Progress | Settings
 │       └── views/
 │           ├── QuizView.tsx   # Quiz generation & answering
-│           ├── ChatView.tsx   # Listen mode chat
+│           ├── ChatView.tsx   # Listen mode chat (+ web search toggle)
+│           ├── ResearchView.tsx # You.com-powered topic research
 │           ├── ProgressView.tsx
 │           └── SettingsView.tsx
 ├── lib/
@@ -149,6 +181,9 @@ coursepilot/
 │   ├── context/
 │   │   ├── page-extractor.ts  # DOM → clean text
 │   │   └── llms-txt-loader.ts # Fetch /llms.txt
+│   ├── youcom/
+│   │   ├── youcom-client.ts   # You.com API client (Search, News, Contents, Express Agent)
+│   │   └── research-service.ts # High-level research orchestration
 │   ├── navigation/
 │   │   └── course-detector.ts # Docsify, GitBook, generic detection
 │   ├── messaging.ts           # Type-safe message protocol

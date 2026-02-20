@@ -16,6 +16,8 @@ AI-powered course companion Chrome extension. Turns any online text-based course
 - **📊 Progress Tracking** - Track your mastery across all course pages
 - **🎧 Listen Mode** - Chat with AI about what you've read (no spoilers - it only sees content you've scrolled past)
 - **🔌 Multiple AI Providers** - Choose from Anthropic, OpenAI, Google Gemini, or local AI gateways
+- **📄 PDF Learning Portfolio** - Export a professional certificate + study report PDF using Foxit APIs
+- **🔍 Web Research** - Research topics with You.com API for citations and grounding
 
 ## 🤝 Built with Kilo Code
 
@@ -195,6 +197,57 @@ For local AI models (Ollama, LM Studio, etc.):
 2. Enter your gateway URL (default: `http://127.0.0.1:18789`)
 3. Enter your API key if required
 4. Click Test to verify
+
+## 📄 Foxit PDF Learning Portfolio
+
+CoursePilot uses **two Foxit APIs** to generate a professional Learning Portfolio PDF from your quiz data.
+
+### How It Works
+
+```
+Learning Data → Word Templates + JSON → [Doc Gen API] → Certificate + Report PDFs
+  → [PDF Services API: combine + compress] → Single optimized PDF → Download
+```
+
+1. **Data Collection** — Aggregates your quiz results, Bloom's Taxonomy performance (per cognitive level), mastery scores, missed questions, and AI chat insights from extension storage
+2. **Document Generation API** — Populates two Word templates with your data:
+   - **Certificate of Mastery** — Single-page certificate with course name, overall mastery score, Bloom's levels achieved, and completion date
+   - **Detailed Study Report** — Multi-page report with page progress table, Bloom's Taxonomy performance breakdown, questions to review, and chat topic insights
+3. **PDF Services API** — Merges both PDFs into one document, then compresses it for easy sharing
+
+### Foxit APIs Used
+
+| API | Endpoint | Purpose |
+|-----|----------|---------|
+| **Document Generation** | `POST /document-generation/api/GenerateDocumentBase64` | Generates PDFs from `.docx` templates populated with learning data JSON |
+| **PDF Services — Upload** | `POST /pdf-services/api/documents/upload` | Uploads generated PDFs for processing |
+| **PDF Services — Combine** | `POST /pdf-services/api/documents/enhance/pdf-combine` | Merges certificate + report into a single PDF |
+| **PDF Services — Compress** | `POST /pdf-services/api/documents/modify/pdf-compress` | Optimizes the final PDF file size |
+| **PDF Services — Poll/Download** | `GET /pdf-services/api/tasks/{taskId}`, `GET /pdf-services/api/documents/{docId}/download` | Async task polling and final PDF download |
+
+### What Makes This Unique
+
+No other project has **Bloom's Taxonomy-based cognitive performance breakdowns** in their PDFs. The study report shows how you performed at each cognitive level (Remember → Understand → Apply → Analyze → Evaluate → Create), giving a real pedagogical assessment — not just a score.
+
+### Setup
+
+1. Open **Settings** in the CoursePilot side panel
+2. Scroll to **Foxit PDF Services**
+3. Enter your Document Generation and PDF Services credentials (client ID + secret for each)
+4. Click **Test Connection** to verify both APIs
+5. Take some quizzes, then go to **Progress** → **Export Learning Portfolio**
+
+## 🛠 Built With
+
+| Technology | Purpose |
+|---|---|
+| [WXT](https://wxt.dev/) | Chrome extension framework (Manifest V3, hot reload, React) |
+| [React 19](https://react.dev/) | Side panel UI |
+| [Tailwind CSS v4](https://tailwindcss.com/) | Styling |
+| [Foxit Document Generation API](https://developers.foxit.com/) | Generates certificate + study report PDFs from Word templates |
+| [Foxit PDF Services API](https://developers.foxit.com/) | Combines and compresses PDFs |
+| [You.com API](https://you.com/platform) | Web research, citations, and news |
+| [Anthropic / OpenAI / Gemini](https://docs.anthropic.com/) | Pluggable AI providers for quiz generation and explanations |
 
 ## 📝 Documentation
 

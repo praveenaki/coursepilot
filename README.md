@@ -17,6 +17,34 @@ AI-powered course companion Chrome extension. Turns any online text-based course
 - **🎧 Listen Mode** - Chat with AI about what you've read (no spoilers - it only sees content you've scrolled past)
 - **🔌 Multiple AI Providers** - Choose from Anthropic, OpenAI, Google Gemini, or local AI gateways
 
+## 🤝 Built with Kilo Code
+
+This project was built entirely with **Kilo Code**, an AI-powered development agent. Here's how Kilo helped:
+
+### How Kilo Helped
+
+1. **Initial Analysis**: Kilo analyzed the existing codebase architecture, understanding the three-entrypoint pattern (Content Script, Background Worker, Side Panel) and the AI provider system
+
+2. **Documentation Generation**: Kilo created comprehensive documentation including:
+   - Developer documentation with architecture diagrams and API references
+   - User documentation with getting started guides and FAQs
+   - Enhanced README with features, troubleshooting, and project structure
+
+3. **Code Understanding**: Kilo explored and documented:
+   - The type-safe message protocol between components
+   - The storage system using WXT storage
+   - The pedagogy engine with Bloom's Taxonomy
+   - The AI provider abstraction layer
+
+### Why Kilo Was Valuable
+
+- **Rapid onboarding**: Kilo quickly understood the complex Chrome extension architecture
+- **Comprehensive docs**: Created documentation that would typically take hours
+- **Pattern recognition**: Identified key patterns and conventions used in the codebase
+- **Context preservation**: Maintained understanding across multiple file reads
+
+This project demonstrates how Kilo Code can accelerate development by handling documentation tasks while developers focus on core functionality.
+
 ## 🚀 Quick Start
 
 ### Prerequisites

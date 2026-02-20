@@ -76,6 +76,21 @@ export const pendingExplanationStorage = storage.defineItem<{
   timestamp: number;
 } | null>('local:pendingExplanation', { defaultValue: null });
 
+// ─── You.com Web Research ──────────────────────────────
+
+// You.com API key (separate from AI providers — this is a research enhancement)
+export const youcomApiKeyStorage = storage.defineItem<string>(
+  'local:youcomApiKey',
+  { defaultValue: '' },
+);
+
+// Pending research request (set by content script "Research" button, consumed by Research tab)
+export const pendingResearchStorage = storage.defineItem<{
+  text: string;
+  pageUrl: string;
+  timestamp: number;
+} | null>('local:pendingResearch', { defaultValue: null });
+
 // ─── Foxit PDF Export ────────────────────────────────────
 
 // Foxit API credentials (Doc Gen + PDF Services, separate keys)

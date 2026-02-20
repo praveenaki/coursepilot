@@ -4,6 +4,7 @@ import type { AIProviderType, Settings } from '@/lib/types';
 import { DEFAULT_SETTINGS } from '@/lib/types';
 import type { FoxitCredentials } from '@/lib/foxit/types';
 import { DEFAULT_FOXIT_CREDENTIALS } from '@/lib/foxit/types';
+import { foxitCredentialsStorage, youcomApiKeyStorage } from '@/utils/storage';
 
 const PROVIDERS: { id: AIProviderType; name: string; description: string }[] = [
   { id: 'anthropic', name: 'Anthropic (Claude)', description: 'Claude Sonnet 4.5 — best for education' },
@@ -38,9 +39,25 @@ export default function SettingsView() {
     error?: string;
   } | null>(null);
 
-  // Load settings on mount
+  // You.com state
+  const [youcomKey, setYoucomKey] = useState('');
+  const [youcomValidating, setYoucomValidating] = useState(false);
+  const [youcomValidationResult, setYoucomValidationResult] = useState<{
+    valid: boolean;
+    error?: string;
+  } | null>(null);
+
+  // Load settings + credentials on mount
   useEffect(() => {
     loadSettings();
+    foxitCredentialsStorage.getValue().then((creds) => {
+      if (creds.docGen.clientId || creds.pdfServices.clientId) {
+        setFoxitCreds(creds);
+      }
+    });
+    youcomApiKeyStorage.getValue().then((key) => {
+      if (key) setYoucomKey(key);
+    });
   }, []);
 
   async function loadSettings() {
@@ -106,6 +123,22 @@ export default function SettingsView() {
     };
     setFoxitValidationResult(result);
     setFoxitValidating(false);
+  }, []);
+
+  const handleYoucomKeyChange = useCallback(async (key: string) => {
+    setYoucomKey(key);
+    await sendToBackground({ type: 'SET_YOUCOM_KEY', payload: { key } });
+  }, []);
+
+  const handleYoucomValidate = useCallback(async () => {
+    setYoucomValidating(true);
+    setYoucomValidationResult(null);
+    const result = (await sendToBackground({ type: 'VALIDATE_YOUCOM' })) as {
+      valid: boolean;
+      error?: string;
+    };
+    setYoucomValidationResult(result);
+    setYoucomValidating(false);
   }, []);
 
   return (
@@ -220,6 +253,69 @@ export default function SettingsView() {
                 fontFamily: 'monospace',
               }}
             />
+          </div>
+        )}
+      </section>
+
+      {/* You.com Web Research */}
+      <section style={{ marginBottom: '24px' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>
+          Web Research
+        </h3>
+        <p style={{ fontSize: '11px', color: 'var(--color-cp-text-muted)', marginBottom: '12px' }}>
+          Powers web research, citations, and news in the Research tab. Get your API key at{' '}
+          <a
+            href="https://you.com/platform/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'var(--color-cp-primary-light)' }}
+          >
+            you.com/platform/api-keys
+          </a>
+        </p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="password"
+            value={youcomKey}
+            onChange={(e) => handleYoucomKeyChange(e.target.value)}
+            placeholder="Enter You.com API key..."
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              background: 'var(--color-cp-surface)',
+              color: 'var(--color-cp-text)',
+              border: '1px solid var(--color-cp-border)',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontFamily: 'monospace',
+            }}
+          />
+          <button
+            onClick={handleYoucomValidate}
+            disabled={youcomValidating || !youcomKey}
+            style={{
+              padding: '8px 12px',
+              background: 'var(--color-cp-surface)',
+              color: 'var(--color-cp-text)',
+              border: '1px solid var(--color-cp-border)',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500,
+            }}
+          >
+            {youcomValidating ? '...' : 'Test'}
+          </button>
+        </div>
+        {youcomValidationResult && (
+          <div
+            style={{
+              marginTop: '6px',
+              fontSize: '12px',
+              color: youcomValidationResult.valid ? 'var(--color-cp-success)' : 'var(--color-cp-danger)',
+            }}
+          >
+            {youcomValidationResult.valid ? '✓ You.com API connected' : `✗ ${youcomValidationResult.error || 'Connection failed'}`}
           </div>
         )}
       </section>

@@ -1,11 +1,14 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAIStream } from '@/hooks/useAIStream';
 import { sendToBackground } from '@/lib/messaging';
+import { youcomApiKeyStorage } from '@/utils/storage';
+import type { YouComSource } from '@/lib/types';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: YouComSource[];
 }
 
 interface ChatViewProps {
@@ -16,9 +19,18 @@ interface ChatViewProps {
 export default function ChatView({ pendingExplanation, onPendingConsumed }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [hasYoucomKey, setHasYoucomKey] = useState(false);
   const { streamText, isStreaming } = useAIStream();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingHandledRef = useRef(false);
+
+  // Check if You.com key is available
+  useEffect(() => {
+    youcomApiKeyStorage.getValue().then((key) => setHasYoucomKey(!!key));
+    const unwatch = youcomApiKeyStorage.watch((key) => setHasYoucomKey(!!key));
+    return unwatch;
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,17 +100,31 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
       content: input.trim(),
     };
     setMessages((prev) => [...prev, userMessage]);
+    const shouldSearchWeb = webSearchEnabled;
     setInput('');
+    setWebSearchEnabled(false); // Reset per-message toggle
 
     try {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+      // If web search is enabled, fetch sources first
+      let webSources: YouComSource[] = [];
+      if (shouldSearchWeb) {
+        const searchResult = await sendToBackground({
+          type: 'SEARCH_WEB',
+          payload: { query: userMessage.content },
+        }) as { ok?: boolean; sources?: YouComSource[]; error?: string };
+        if (searchResult.sources) {
+          webSources = searchResult.sources;
+        }
+      }
 
       const result = await sendToBackground({
         type: 'CHAT_MESSAGE',
         payload: {
           message: userMessage.content,
           pageUrl: tab?.url ?? '',
-          scrollProgress: 0.5, // TODO: get actual scroll progress from content script
+          scrollProgress: 0.5,
         },
       }) as { ok?: boolean; prompt?: string; error?: string };
 
@@ -114,12 +140,17 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
         const assistantId = `msg-${Date.now()}`;
         setMessages((prev) => [
           ...prev,
-          { id: assistantId, role: 'assistant', content: '' },
+          { id: assistantId, role: 'assistant', content: '', sources: webSources.length > 0 ? webSources : undefined },
         ]);
+
+        // Inject web sources into the system prompt if available
+        const systemContent = webSources.length > 0
+          ? `You are a patient course tutor helping a student understand material they are currently reading.\n\nThe following web sources are relevant to the student's question. Reference them in your answer and cite sources by number:\n${webSources.map((s, i) => `[${i + 1}] ${s.title} (${s.url}): ${s.snippet}`).join('\n')}`
+          : 'You are a patient course tutor helping a student understand material they are currently reading.';
 
         await streamText(
           [
-            { role: 'system', content: 'You are a patient course tutor helping a student understand material they are currently reading.' },
+            { role: 'system', content: systemContent },
             { role: 'user', content: result.prompt },
           ],
           (chunk) => {
@@ -143,7 +174,7 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
         },
       ]);
     }
-  }, [input, isStreaming, streamText]);
+  }, [input, isStreaming, streamText, webSearchEnabled]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -175,7 +206,8 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
               style={{
                 marginBottom: '12px',
                 display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                flexDirection: 'column',
+                alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
               }}
             >
               <div
@@ -192,6 +224,35 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
               >
                 {msg.content || (isStreaming ? '...' : '')}
               </div>
+              {/* Web sources attached to this message */}
+              {msg.sources && msg.sources.length > 0 && (
+                <div style={{ maxWidth: '85%', marginTop: '6px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-cp-text-muted)', marginBottom: '4px' }}>
+                    Sources
+                  </div>
+                  {msg.sources.map((source, i) => (
+                    <a
+                      key={i}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        padding: '6px 8px',
+                        marginBottom: '3px',
+                        background: 'var(--color-cp-surface)',
+                        border: '1px solid var(--color-cp-border)',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        color: 'var(--color-cp-primary-light)',
+                        fontSize: '11px',
+                      }}
+                    >
+                      [{i + 1}] {source.title}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           ))
         )}
@@ -202,9 +263,33 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
       <div style={{
         padding: '12px',
         borderTop: '1px solid var(--color-cp-border)',
-        display: 'flex',
-        gap: '8px',
       }}>
+        {/* Web search toggle */}
+        {hasYoucomKey && (
+          <div style={{ marginBottom: '8px' }}>
+            <button
+              onClick={() => setWebSearchEnabled((v) => !v)}
+              disabled={isStreaming}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '4px 10px',
+                background: webSearchEnabled ? 'var(--color-cp-primary)' : 'var(--color-cp-surface)',
+                color: webSearchEnabled ? 'white' : 'var(--color-cp-text-muted)',
+                border: `1px solid ${webSearchEnabled ? 'var(--color-cp-primary)' : 'var(--color-cp-border)'}`,
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: 500,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              🔍 Search web
+            </button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -243,6 +328,7 @@ export default function ChatView({ pendingExplanation, onPendingConsumed }: Chat
         >
           ↑
         </button>
+        </div>
       </div>
     </div>
   );

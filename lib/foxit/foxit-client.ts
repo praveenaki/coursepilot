@@ -130,7 +130,9 @@ export class FoxitPdfServicesClient {
           ...this.headers,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ documentIds }),
+        body: JSON.stringify({
+          documentInfos: documentIds.map((id) => ({ documentId: id })),
+        }),
       },
     );
 

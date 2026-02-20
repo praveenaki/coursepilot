@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { sendToBackground } from '@/lib/messaging';
+import { pendingResearchStorage } from '@/utils/storage';
 
 interface SelectionPosition {
   x: number;
@@ -129,6 +130,21 @@ export default function ContentApp() {
     setSelection(null);
   }, [selection]);
 
+  const handleResearchClick = useCallback(async () => {
+    if (!selection) return;
+    await pendingResearchStorage.setValue({
+      text: selection.text,
+      pageUrl: window.location.href,
+      timestamp: Date.now(),
+    });
+    // Open side panel (it will auto-switch to Research tab via pendingResearchStorage watcher)
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await browser.sidePanel.open({ tabId: tab.id });
+    }
+    setSelection(null);
+  }, [selection]);
+
   return (
     <>
       {/* Mastery Badge */}
@@ -152,12 +168,15 @@ export default function ContentApp() {
         <div
           className="cp-selection-popup"
           style={{
-            left: `${Math.max(10, selection.x - 60)}px`,
+            left: `${Math.max(10, selection.x - 90)}px`,
             top: `${Math.max(10, selection.y - 40)}px`,
           }}
         >
           <button className="cp-selection-btn" onClick={handleExplainClick}>
-            💡 Explain this
+            💡 Explain
+          </button>
+          <button className="cp-selection-btn" onClick={handleResearchClick}>
+            🔍 Research
           </button>
         </div>
       )}

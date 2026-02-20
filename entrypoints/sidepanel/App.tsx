@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import QuizView from './views/QuizView';
 import ChatView from './views/ChatView';
+import ResearchView from './views/ResearchView';
 import ProgressView from './views/ProgressView';
 import SettingsView from './views/SettingsView';
-import { pendingExplanationStorage } from '@/utils/storage';
+import { pendingExplanationStorage, pendingResearchStorage } from '@/utils/storage';
 
-type Tab = 'quiz' | 'chat' | 'progress' | 'settings';
+type Tab = 'quiz' | 'chat' | 'research' | 'progress' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'quiz', label: 'Quiz', icon: '🎯' },
   { id: 'chat', label: 'Chat', icon: '💬' },
+  { id: 'research', label: 'Research', icon: '🔍' },
   { id: 'progress', label: 'Progress', icon: '📊' },
   { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
@@ -20,7 +22,6 @@ export default function App() {
 
   // Watch for pending explanation requests (from "Explain this" button)
   useEffect(() => {
-    // Check on mount
     pendingExplanationStorage.getValue().then((pending) => {
       if (pending && Date.now() - pending.timestamp < 10000) {
         setPendingText(pending.text);
@@ -29,12 +30,29 @@ export default function App() {
       }
     });
 
-    // Watch for changes (if side panel is already open when user clicks "Explain this")
     const unwatch = pendingExplanationStorage.watch((pending) => {
       if (pending && Date.now() - pending.timestamp < 10000) {
         setPendingText(pending.text);
         setActiveTab('chat');
         pendingExplanationStorage.setValue(null);
+      }
+    });
+
+    return unwatch;
+  }, []);
+
+  // Watch for pending research requests (from "Research" button)
+  useEffect(() => {
+    pendingResearchStorage.getValue().then((pending) => {
+      if (pending && Date.now() - pending.timestamp < 10000) {
+        setActiveTab('research');
+        // ResearchView handles consuming the pending request
+      }
+    });
+
+    const unwatch = pendingResearchStorage.watch((pending) => {
+      if (pending && Date.now() - pending.timestamp < 10000) {
+        setActiveTab('research');
       }
     });
 
@@ -97,6 +115,7 @@ export default function App() {
       <main style={{ flex: 1, overflow: 'auto' }}>
         {activeTab === 'quiz' && <QuizView />}
         {activeTab === 'chat' && <ChatView pendingExplanation={pendingText} onPendingConsumed={clearPendingText} />}
+        {activeTab === 'research' && <ResearchView />}
         {activeTab === 'progress' && <ProgressView />}
         {activeTab === 'settings' && <SettingsView />}
       </main>

@@ -6,7 +6,9 @@ import type {
   PageProgress,
   QuizQuestion,
   QuizSession,
+  ResearchResult,
   Settings,
+  YouComSource,
 } from './types';
 import type { FoxitCredentials } from './foxit/types';
 
@@ -39,7 +41,12 @@ export type PanelToBackgroundMessage =
   | { type: 'VALIDATE_PROVIDER'; payload: { provider: AIProviderType } }
   | { type: 'EXPORT_PORTFOLIO'; payload: { courseId: string } }
   | { type: 'SET_FOXIT_CREDENTIALS'; payload: FoxitCredentials }
-  | { type: 'VALIDATE_FOXIT' };
+  | { type: 'VALIDATE_FOXIT' }
+  | { type: 'RESEARCH_TOPIC'; payload: { topic: string; pageUrl?: string } }
+  | { type: 'SEARCH_WEB'; payload: { query: string } }
+  | { type: 'GET_NEWS'; payload: { query: string } }
+  | { type: 'SET_YOUCOM_KEY'; payload: { key: string } }
+  | { type: 'VALIDATE_YOUCOM' };
 
 // Messages FROM background TO content script
 export type BackgroundToContentMessage =

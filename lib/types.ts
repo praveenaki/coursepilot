@@ -195,3 +195,32 @@ export const DEFAULT_CONTEXT_BUDGET: ContextBudget = {
   reserve: 8000,
   total: 100000,
 };
+
+// ─── You.com Research Types ──────────────────────────────
+
+export interface YouComSource {
+  title: string;
+  url: string;
+  snippet: string;
+  pageAge?: string;
+  thumbnailUrl?: string;
+  faviconUrl?: string;
+}
+
+export interface YouComNewsItem {
+  title: string;
+  url: string;
+  description: string;
+  source: string;
+  age: string;
+  thumbnailUrl?: string;
+}
+
+export interface ResearchResult {
+  query: string;
+  explanation: string;
+  citations: YouComSource[];
+  webSources: YouComSource[];
+  news: YouComNewsItem[];
+  timestamp: number;
+}

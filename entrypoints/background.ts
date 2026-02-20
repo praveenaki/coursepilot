@@ -16,12 +16,15 @@ import {
   progressStorage,
   settingsStorage,
   foxitCredentialsStorage,
+  youcomApiKeyStorage,
 } from '@/utils/storage';
 import { exportLearningPortfolio } from '@/lib/foxit/export-orchestrator';
 import { FoxitDocGenClient, FoxitPdfServicesClient } from '@/lib/foxit/foxit-client';
 import { DEFAULT_MODELS } from '@/lib/ai/types';
 import { buildQuizGenerationPrompt, buildAnswerEvaluationPrompt } from '@/lib/ai/prompts/quiz-generation';
 import { buildExplanationPrompt, buildListenModePrompt } from '@/lib/ai/prompts/explanation';
+import { YouComClient } from '@/lib/youcom/youcom-client';
+import { researchTopic, findCurrentNews, searchForGrounding } from '@/lib/youcom/research-service';
 
 export default defineBackground(() => {
   console.log('[CoursePilot] Background worker started');
@@ -315,6 +318,82 @@ export default defineBackground(() => {
             docGen: docGenValid,
             pdfServices: pdfValid,
           };
+        } catch (error) {
+          return {
+            valid: false,
+            error: error instanceof Error ? error.message : 'Validation failed',
+          };
+        }
+      }
+
+      // ── You.com Research Messages ───────────────────
+
+      case 'RESEARCH_TOPIC': {
+        const { topic, pageUrl } = message.payload;
+        const apiKey = await youcomApiKeyStorage.getValue();
+        if (!apiKey) {
+          return { error: 'You.com API key not configured. Add it in Settings → Web Research.' };
+        }
+        try {
+          // Get course context for better research results
+          let courseContext: string | undefined;
+          if (pageUrl) {
+            const cache = await contextCacheStorage.getValue();
+            const pageContext = cache[pageUrl];
+            if (pageContext) {
+              courseContext = pageContext.title;
+            }
+          }
+          const client = new YouComClient(apiKey);
+          const result = await researchTopic(client, topic, courseContext);
+          return { ok: true, result };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : 'Research failed' };
+        }
+      }
+
+      case 'SEARCH_WEB': {
+        const apiKey = await youcomApiKeyStorage.getValue();
+        if (!apiKey) {
+          return { error: 'You.com API key not configured.' };
+        }
+        try {
+          const client = new YouComClient(apiKey);
+          const sources = await searchForGrounding(client, message.payload.query);
+          return { ok: true, sources };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : 'Search failed' };
+        }
+      }
+
+      case 'GET_NEWS': {
+        const apiKey = await youcomApiKeyStorage.getValue();
+        if (!apiKey) {
+          return { error: 'You.com API key not configured.' };
+        }
+        try {
+          const client = new YouComClient(apiKey);
+          const news = await findCurrentNews(client, message.payload.query);
+          return { ok: true, news };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : 'News lookup failed' };
+        }
+      }
+
+      case 'SET_YOUCOM_KEY': {
+        await youcomApiKeyStorage.setValue(message.payload.key);
+        return { ok: true };
+      }
+
+      case 'VALIDATE_YOUCOM': {
+        try {
+          const apiKey = await youcomApiKeyStorage.getValue();
+          if (!apiKey) {
+            return { valid: false, error: 'No API key configured' };
+          }
+          const client = new YouComClient(apiKey);
+          const valid = await client.validate();
+          return { valid };
         } catch (error) {
           return {
             valid: false,

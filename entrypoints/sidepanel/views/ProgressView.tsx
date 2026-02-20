@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { sendToBackground } from '@/lib/messaging';
 import type { CourseProgress, PageProgress } from '@/lib/types';
+import { progressStorage, quizHistoryStorage, coursesStorage } from '@/utils/storage';
 import ExportButton from '../components/ExportButton';
 
 export default function ProgressView() {
@@ -13,18 +14,105 @@ export default function ProgressView() {
 
   async function loadProgress() {
     try {
-      // Try to get course progress from current tab
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.url) {
+      // First try progressStorage directly
+      const allProgress = await progressStorage.getValue();
+      let courses = Object.values(allProgress);
+
+      // If progressStorage is empty, build progress from quiz history
+      if (courses.length === 0) {
+        const built = await buildProgressFromQuizHistory();
+        if (built) {
+          courses = [built];
+        }
+      }
+
+      if (courses.length === 0) {
         setLoading(false);
         return;
       }
 
-      // For now, show a placeholder until course detection is implemented
+      // Try to match current tab URL to a course
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      const tabUrl = tab?.url ?? '';
+
+      const matched = courses.find((cp) =>
+        Object.keys(cp.pageProgress).some((pageUrl) => {
+          try { return tabUrl.startsWith(new URL(pageUrl).origin); } catch { return false; }
+        }),
+      );
+
+      setProgress(matched ?? courses[0]);
       setLoading(false);
-    } catch {
+    } catch (err) {
+      console.error('[CoursePilot] loadProgress error:', err);
       setLoading(false);
     }
+  }
+
+  // Build CourseProgress from quizHistoryStorage when progressStorage is empty
+  async function buildProgressFromQuizHistory(): Promise<CourseProgress | null> {
+    const [quizzes, allCourses, settings] = await Promise.all([
+      quizHistoryStorage.getValue(),
+      coursesStorage.getValue(),
+      sendToBackground({ type: 'GET_SETTINGS' }) as Promise<{ masteryThreshold?: number }>,
+    ]);
+
+    if (quizzes.length === 0) return null;
+
+    const threshold = settings?.masteryThreshold ?? 80;
+
+    // Group quizzes by courseId
+    const byCourse: Record<string, typeof quizzes> = {};
+    for (const q of quizzes) {
+      const cid = q.courseId || 'unknown';
+      (byCourse[cid] ??= []).push(q);
+    }
+
+    // Build progress for the first course that has quizzes
+    const [courseId, courseQuizzes] = Object.entries(byCourse)[0];
+
+    // Group quizzes by pageUrl
+    const byPage: Record<string, typeof quizzes> = {};
+    for (const q of courseQuizzes) {
+      (byPage[q.pageUrl] ??= []).push(q);
+    }
+
+    const pageProgress: Record<string, PageProgress> = {};
+    for (const [url, pageQuizzes] of Object.entries(byPage)) {
+      const bestScore = Math.max(...pageQuizzes.map((q) => q.masteryScore));
+      pageProgress[url] = {
+        url,
+        courseId,
+        masteryScore: bestScore,
+        quizSessions: pageQuizzes.map((q) => q.id),
+        scrollProgress: 0,
+        visitCount: pageQuizzes.length,
+        lastVisited: Math.max(...pageQuizzes.map((q) => q.completedAt ?? q.startedAt)),
+        mastered: bestScore >= threshold,
+      };
+    }
+
+    const pages = Object.values(pageProgress);
+    const overall = pages.length > 0
+      ? Math.round(pages.reduce((sum, p) => sum + p.masteryScore, 0) / pages.length)
+      : 0;
+
+    const built: CourseProgress = {
+      courseId,
+      pageProgress,
+      overallMastery: overall,
+      pagesCompleted: pages.filter((p) => p.mastered).length,
+      totalPages: allCourses[courseId]?.pages?.length || pages.length,
+      startedAt: Math.min(...courseQuizzes.map((q) => q.startedAt)),
+      lastActiveAt: Math.max(...courseQuizzes.map((q) => q.completedAt ?? q.startedAt)),
+    };
+
+    // Persist so we don't rebuild every time
+    const allProgress = await progressStorage.getValue();
+    allProgress[courseId] = built;
+    await progressStorage.setValue(allProgress);
+
+    return built;
   }
 
   if (loading) {
@@ -117,7 +205,9 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 }
 
 function PageProgressCard({ page }: { page: PageProgress }) {
-  const urlPath = new URL(page.url).pathname;
+  // Docsify uses hash routing — real path is in the hash, not pathname
+  const parsed = new URL(page.url);
+  const urlPath = parsed.hash ? parsed.hash.replace(/^#\/?/, '/') : parsed.pathname;
 
   return (
     <div style={{

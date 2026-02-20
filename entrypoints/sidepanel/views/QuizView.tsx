@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAIStream } from '@/hooks/useAIStream';
 import { sendToBackground } from '@/lib/messaging';
-import type { QuizQuestion } from '@/lib/types';
+import type { QuizQuestion, QuizAttempt, QuizSession, CourseProgress, PageProgress } from '@/lib/types';
+import { quizHistoryStorage, progressStorage, coursesStorage, settingsStorage } from '@/utils/storage';
 
 type QuizState = 'idle' | 'generating' | 'answering' | 'feedback' | 'complete';
 
@@ -15,6 +16,8 @@ export default function QuizView() {
   const [score, setScore] = useState(0);
   const [totalScore, setTotalScore] = useState(0);
   const { streamText, isStreaming, streamedText } = useAIStream();
+  const attemptsRef = useRef<QuizAttempt[]>([]);
+  const quizPageUrl = useRef<string>('');
 
   const currentQuestion = questions[currentIndex];
 
@@ -65,6 +68,8 @@ export default function QuizView() {
             setQuestions(withIds);
             setCurrentIndex(0);
             setTotalScore(0);
+            attemptsRef.current = [];
+            quizPageUrl.current = tab!.url!;
             setState('answering');
           }
         } catch {
@@ -115,6 +120,15 @@ export default function QuizView() {
             setScore(adjustedScore);
             setTotalScore((prev) => prev + adjustedScore);
             setFeedback(evaluation.feedback);
+            attemptsRef.current.push({
+              questionId: currentQuestion.id,
+              userAnswer,
+              isCorrect: adjustedScore >= 70,
+              hintsUsed,
+              score: adjustedScore,
+              feedback: evaluation.feedback,
+              timestamp: Date.now(),
+            });
           }
         } catch {
           setFeedback('Could not evaluate answer. Moving to next question.');
@@ -126,7 +140,7 @@ export default function QuizView() {
     }
   }, [currentQuestion, userAnswer, hintsUsed, streamText]);
 
-  const handleNextQuestion = useCallback(() => {
+  const handleNextQuestion = useCallback(async () => {
     if (currentIndex < questions.length - 1) {
       setCurrentIndex((i) => i + 1);
       setUserAnswer('');
@@ -136,8 +150,88 @@ export default function QuizView() {
       setState('answering');
     } else {
       setState('complete');
+      // Persist quiz results to storage
+      await saveQuizResults();
     }
   }, [currentIndex, questions.length]);
+
+  async function saveQuizResults() {
+    try {
+    console.log('[CoursePilot] saveQuizResults called, attempts:', attemptsRef.current.length, 'questions:', questions.length);
+    const avgScore = questions.length > 0
+      ? Math.round(attemptsRef.current.reduce((s, a) => s + a.score, 0) / questions.length)
+      : 0;
+
+    // Find courseId from detected courses
+    const allCourses = await coursesStorage.getValue();
+    const courseId = Object.values(allCourses).find((c) => {
+      try { return quizPageUrl.current.startsWith(c.baseUrl); } catch { return false; }
+    })?.id ?? 'unknown';
+
+    const settings = await settingsStorage.getValue();
+    const passed = avgScore >= settings.masteryThreshold;
+
+    // Save quiz session
+    const session: QuizSession = {
+      id: `quiz-${Date.now()}`,
+      courseId,
+      pageUrl: quizPageUrl.current,
+      questions,
+      attempts: attemptsRef.current,
+      masteryScore: avgScore,
+      passed,
+      startedAt: attemptsRef.current[0]?.timestamp ?? Date.now(),
+      completedAt: Date.now(),
+    };
+
+    const history = await quizHistoryStorage.getValue();
+    history.push(session);
+    await quizHistoryStorage.setValue(history);
+
+    // Update progress
+    const allProgress = await progressStorage.getValue();
+    let courseProgress = allProgress[courseId];
+    if (!courseProgress) {
+      courseProgress = {
+        courseId,
+        pageProgress: {},
+        overallMastery: 0,
+        pagesCompleted: 0,
+        totalPages: allCourses[courseId]?.pages?.length || 1,
+        startedAt: Date.now(),
+        lastActiveAt: Date.now(),
+      };
+    }
+
+    const existing = courseProgress.pageProgress[quizPageUrl.current];
+    const bestScore = Math.max(existing?.masteryScore ?? 0, avgScore);
+
+    courseProgress.pageProgress[quizPageUrl.current] = {
+      url: quizPageUrl.current,
+      courseId,
+      masteryScore: bestScore,
+      quizSessions: [...(existing?.quizSessions ?? []), session.id],
+      scrollProgress: existing?.scrollProgress ?? 0,
+      visitCount: (existing?.visitCount ?? 0) + 1,
+      lastVisited: Date.now(),
+      mastered: bestScore >= settings.masteryThreshold,
+    };
+
+    // Recalculate overall mastery
+    const pages = Object.values(courseProgress.pageProgress);
+    courseProgress.overallMastery = pages.length > 0
+      ? Math.round(pages.reduce((s, p) => s + p.masteryScore, 0) / pages.length)
+      : 0;
+    courseProgress.pagesCompleted = pages.filter((p) => p.mastered).length;
+    courseProgress.lastActiveAt = Date.now();
+
+    allProgress[courseId] = courseProgress;
+    await progressStorage.setValue(allProgress);
+    console.log('[CoursePilot] Quiz saved! courseId:', courseId, 'score:', avgScore, 'passed:', passed);
+    } catch (err) {
+      console.error('[CoursePilot] saveQuizResults error:', err);
+    }
+  }
 
   const handleShowHint = useCallback(() => {
     if (!currentQuestion || hintsUsed >= currentQuestion.hints.length) return;
